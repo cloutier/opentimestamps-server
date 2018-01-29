@@ -22,6 +22,7 @@ from bitcoin.core import b2lx, b2x
 import otsserver
 from opentimestamps.core.serialize import StreamSerializationContext
 
+import otsserver.dotconf
 
 class RPCRequestHandler(http.server.BaseHTTPRequestHandler):
     MAX_DIGEST_LENGTH = 64
@@ -135,7 +136,7 @@ class RPCRequestHandler(http.server.BaseHTTPRequestHandler):
 
             self.end_headers()
 
-            proxy = bitcoin.rpc.Proxy(btc_conf_file=os.path.expanduser("~/.litecoin/litecoin.conf"))
+            proxy = bitcoin.rpc.Proxy(btc_conf_file=otsserver.dotconf.getConfFileForChain(chain))
 
             # FIXME: Unfortunately getbalance() doesn't return the right thing;
             # need to investigate further, but this seems to work.

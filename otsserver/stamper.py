@@ -31,6 +31,8 @@ from opentimestamps.timestamp import nonce_timestamp
 
 from otsserver.calendar import Journal
 
+import otsserver.dotconf
+
 KnownBlock = collections.namedtuple('KnownBlock', ['height', 'hash'])
 TimestampTx = collections.namedtuple('TimestampTx', ['tx', 'tip_timestamp', 'commitment_timestamps'])
 UnconfirmedTimestampTx = collections.namedtuple('TimestampTx', ['tx', 'tip_timestamp', 'n'])
@@ -203,13 +205,13 @@ class Stamper:
 
             return (tip_timestamp, commitment_timestamps)
 
-    def __do_bitcoin(self, chain="bitcoin"):
+    def __do_bitcoin(self, chain):
         """Do Bitcoin-related maintenance"""
 
         # FIXME: we shouldn't have to create a new proxy each time, but with
         # current python-bitcoinlib and the RPC implementation it seems that
         # the proxy connection can timeout w/o recovering properly.
-        proxy = bitcoin.rpc.Proxy(btc_conf_file=os.path.expanduser('~/.%s/%s.conf' % (chain, chain)))
+        proxy = bitcoin.rpc.Proxy(btc_conf_file=otsserver.dotconf.getConfFileForChain(chain))
 
         new_blocks = self.known_blocks.update_from_proxy(proxy)
 
@@ -313,7 +315,8 @@ class Stamper:
 
             # make_merkle_tree() seems to take long enough on really big adds
             # that the proxy dies
-            proxy = bitcoin.rpc.Proxy(btc_conf_file=os.path.expanduser('~/.%s/%s.conf' % (chain, chain)))
+
+            proxy = bitcoin.rpc.Proxy(btc_conf_file=otsserver.dotconf.getConfFileForChain(chain))
 
             sent_tx = None
             relay_feerate = self.relay_feerate

@@ -114,6 +114,8 @@ if args.chain == 'testnet':
     bitcoin.SelectParams('testnet')
 elif args.chain == 'regtest':
     bitcoin.SelectParams('regtest')
+elif args.chain == 'litecoin':
+    bitcoin.SelectParams('litecoin')
 elif args.chain == 'litecoinTestnet':
     bitcoin.SelectParams('litecoinTestnet')
 
