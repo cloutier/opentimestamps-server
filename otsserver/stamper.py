@@ -203,13 +203,13 @@ class Stamper:
 
             return (tip_timestamp, commitment_timestamps)
 
-    def __do_bitcoin(self):
+    def __do_bitcoin(self, chain="bitcoin"):
         """Do Bitcoin-related maintenance"""
 
         # FIXME: we shouldn't have to create a new proxy each time, but with
         # current python-bitcoinlib and the RPC implementation it seems that
         # the proxy connection can timeout w/o recovering properly.
-        proxy = bitcoin.rpc.Proxy()
+        proxy = bitcoin.rpc.Proxy(btc_conf_file=os.path.expanduser('~/.%s/%s.conf' % (chain, chain)))
 
         new_blocks = self.known_blocks.update_from_proxy(proxy)
 
@@ -313,7 +313,7 @@ class Stamper:
 
             # make_merkle_tree() seems to take long enough on really big adds
             # that the proxy dies
-            proxy = bitcoin.rpc.Proxy()
+            proxy = bitcoin.rpc.Proxy(btc_conf_file=os.path.expanduser('~/.%s/%s.conf' % (chain, chain)))
 
             sent_tx = None
             relay_feerate = self.relay_feerate
@@ -388,7 +388,7 @@ class Stamper:
                 idx += 1
 
             try:
-                self.__do_bitcoin()
+                self.__do_bitcoin(chain=self.chain)
             except Exception as exp:
                 # !@#$ Python.
                 #
@@ -421,10 +421,11 @@ class Stamper:
             else:
                 return False
 
-    def __init__(self, calendar, exit_event, relay_feerate, min_confirmations, min_tx_interval, max_fee, max_pending):
+    def __init__(self, calendar, exit_event, relay_feerate, min_confirmations, min_tx_interval, max_fee, max_pending, chain):
         self.calendar = calendar
         self.exit_event = exit_event
 
+        self.chain = chain
         self.relay_feerate = relay_feerate
         self.min_confirmations = min_confirmations
         assert self.min_confirmations > 1

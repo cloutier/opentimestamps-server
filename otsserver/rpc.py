@@ -135,7 +135,7 @@ class RPCRequestHandler(http.server.BaseHTTPRequestHandler):
 
             self.end_headers()
 
-            proxy = bitcoin.rpc.Proxy()
+            proxy = bitcoin.rpc.Proxy(btc_conf_file=os.path.expanduser("~/.litecoin/litecoin.conf"))
 
             # FIXME: Unfortunately getbalance() doesn't return the right thing;
             # need to investigate further, but this seems to work.
@@ -155,6 +155,7 @@ Transactions waiting for confirmation: %d</br>
 Most recent timestamp tx: %s (%d prior versions)</br>
 Most recent merkle tree tip: %s</br>
 Best-block: %s, height %d</br>
+Current chain: %s</br>
 </br>
 Wallet balance: %s BTC</br>
 </p>
@@ -173,6 +174,7 @@ This address changes after every donation.
        max(0, len(self.calendar.stamper.unconfirmed_txs) - 1),
        b2x(self.calendar.stamper.unconfirmed_txs[-1].tip_timestamp.msg) if self.calendar.stamper.unconfirmed_txs else 'None',
        bitcoin.core.b2lx(proxy.getbestblockhash()), proxy.getblockcount(),
+       self.calendar.stamper.chain,
        str_wallet_balance,
        str(proxy.getaccountaddress('')))
 
@@ -193,7 +195,7 @@ This address changes after every donation.
 
 
 class StampServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
-    def __init__(self, server_address, aggregator, calendar):
+    def __init__(self, server_address, aggregator, calendar, chain):
         class rpc_request_handler(RPCRequestHandler):
             pass
         rpc_request_handler.aggregator = aggregator

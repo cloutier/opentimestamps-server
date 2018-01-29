@@ -69,13 +69,19 @@ parser.add_argument("--btc-max-fee", metavar='FEE', type=float,
                     default=0.001,
                     help="Maximum transaction fee (default: %(default).3f BTC)")
 
-btc_net_group = parser.add_mutually_exclusive_group()
-btc_net_group.add_argument('--btc-testnet', dest='btc_net', action='store_const',
-                           const='testnet', default='mainnet',
+chain_choice = parser.add_mutually_exclusive_group()
+chain_choice.add_argument('--btc-testnet', dest='chain', action='store_const',
+                           const='testnet', default='bitcoin',
                            help='Use Bitcoin testnet rather than mainnet')
-btc_net_group.add_argument('--btc-regtest', dest='btc_net', action='store_const',
-                           const='regtest',
+chain_choice.add_argument('--btc-regtest', dest='chain', action='store_const',
+                           const='bitcoin_regtest',
                            help='Use Bitcoin regtest rather than mainnet')
+chain_choice.add_argument('--litecoin', dest='chain', action='store_const',
+                           const='litecoin',
+                           help='Use litecoin mainnet')
+chain_choice.add_argument('--litecoin-testnet', dest='chain', action='store_const',
+                           const='litecoinTestnet',
+                           help='Use litecoin mainnet')
 
 args = parser.parse_args()
 args.parser = parser
@@ -104,10 +110,12 @@ elif args.verbosity == -1:
 elif args.verbosity < -1:
     logging.root.setLevel(logging.ERROR)
 
-if args.btc_net == 'testnet':
+if args.chain == 'testnet':
     bitcoin.SelectParams('testnet')
-elif args.btc_net == 'regtest':
+elif args.chain == 'regtest':
     bitcoin.SelectParams('regtest')
+elif args.chain == 'litecoinTestnet':
+    bitcoin.SelectParams('litecoinTestnet')
 
 
 exit_event = threading.Event()
@@ -122,11 +130,13 @@ stamper = otsserver.stamper.Stamper(calendar, exit_event,
                                     args.btc_min_confirmations,
                                     args.btc_min_tx_interval,
                                     args.btc_max_fee * bitcoin.core.COIN,
-                                    args.max_pending)
+                                    args.max_pending,
+                                    args.chain,
+                                    )
 
 calendar.stamper = stamper
 
-server = otsserver.rpc.StampServer((args.rpc_address, args.rpc_port), aggregator, calendar)
+server = otsserver.rpc.StampServer((args.rpc_address, args.rpc_port), aggregator, calendar, args.chain)
 try:
     server.serve_forever()
 except KeyboardInterrupt:
