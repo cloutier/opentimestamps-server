@@ -136,7 +136,7 @@ class RPCRequestHandler(http.server.BaseHTTPRequestHandler):
 
             self.end_headers()
 
-            proxy = bitcoin.rpc.Proxy(btc_conf_file=otsserver.dotconf.getConfFileForChain(chain))
+            proxy = bitcoin.rpc.Proxy(btc_conf_file=otsserver.dotconf.getConfFileForChain(self.calendar.stamper.chain))
 
             # FIXME: Unfortunately getbalance() doesn't return the right thing;
             # need to investigate further, but this seems to work.
@@ -158,7 +158,7 @@ Most recent merkle tree tip: %s</br>
 Best-block: %s, height %d</br>
 Current chain: %s</br>
 </br>
-Wallet balance: %s BTC</br>
+Wallet balance: %s %s</br>
 </p>
 
 <p>
@@ -177,6 +177,7 @@ This address changes after every donation.
        bitcoin.core.b2lx(proxy.getbestblockhash()), proxy.getblockcount(),
        self.calendar.stamper.chain,
        str_wallet_balance,
+       otsserver.dotconf.getTickerForChain(self.calendar.stamper.chain),
        str(proxy.getaccountaddress('')))
 
             self.wfile.write(welcome_page.encode())

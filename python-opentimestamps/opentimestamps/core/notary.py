@@ -295,3 +295,121 @@ class BitcoinBlockHeaderAttestation(TimeAttestation):
         height = ctx.read_varuint()
         return BitcoinBlockHeaderAttestation(height)
 
+class BitcoinTestnetBlockHeaderAttestation(TimeAttestation):
+
+    TAG = bytes.fromhex('d35dad183e0dd296')
+
+    def __init__(self, height):
+        self.height = height
+
+    def __eq__(self, other):
+        if other.__class__ is BitcoinTestnetBlockHeaderAttestation:
+            return self.height == other.height
+        else:
+            super().__eq__(other)
+
+    def __lt__(self, other):
+        if other.__class__ is BitcoinTestnetBlockHeaderAttestation:
+            return self.height < other.height
+        else:
+            super().__eq__(other)
+
+    def __hash__(self):
+        return hash(self.height)
+
+    def verify_against_blockheader(self, digest, block_header):
+        """Verify attestation against a block header
+        Returns the block time on success; raises VerificationError on failure.
+        """
+
+        if len(digest) != 32:
+            raise VerificationError("Expected digest with length 32 bytes; got %d bytes" % len(digest))
+        elif digest != block_header.hashMerkleRoot:
+            raise VerificationError("Digest does not match merkleroot")
+
+        return block_header.nTime
+
+    def __repr__(self):
+        return 'BitcoinTestnetBlockHeaderAttestation(%r)' % self.height
+
+    def _serialize_payload(self, ctx):
+        ctx.write_varuint(self.height)
+
+    @classmethod
+    def deserialize(cls, ctx):
+        height = ctx.read_varuint()
+        return BitcoinTestnetBlockHeaderAttestation(height)
+
+class LitecoinBlockHeaderAttestation(TimeAttestation):
+    """Signed by the Litecoin blockchain
+
+    The commitment digest will be the merkleroot of the blockheader.
+
+    The block height is recorded so that looking up the correct block header in
+    an external block header database doesn't require every header to be stored
+    locally (33MB and counting). (remember that a memory-constrained local
+    client can save an MMR that commits to all blocks, and use an external service to fill
+    in pruned details).
+
+    Otherwise no additional redundant data about the block header is recorded.
+    This is very intentional: since the attestation contains (nearly) the
+    absolute bare minimum amount of data, we encourage implementations to do
+    the correct thing and get the block header from a by-height index, check
+    that the merkleroots match, and then calculate the time from the header
+    information. Providing more data would encourage implementations to cheat.
+
+    Remember that the only thing that would invalidate the block height is a
+    reorg, but in the event of a reorg the merkleroot will be invalid anyway,
+    so there's no point to recording data in the attestation like the header
+    itself. At best that would just give us extra confirmation that a reorg
+    made the attestation invalid; reorgs deep enough to invalidate timestamps are
+    exceptionally rare events anyway, so better to just tell the user the timestamp
+    can't be verified rather than add almost-never tested code to handle that case
+    more gracefully.
+    """
+
+    TAG = bytes.fromhex('0688960d73d71901')
+
+    def __init__(self, height):
+        self.height = height
+
+    def __eq__(self, other):
+        if other.__class__ is LitecoinBlockHeaderAttestation:
+            return self.height == other.height
+        else:
+            super().__eq__(other)
+
+    def __lt__(self, other):
+        if other.__class__ is LitecoinBlockHeaderAttestation:
+            return self.height < other.height
+
+        else:
+            super().__eq__(other)
+
+    def __hash__(self):
+        return hash(self.height)
+
+    def verify_against_blockheader(self, digest, block_header):
+        """Verify attestation against a block header
+
+        Returns the block time on success; raises VerificationError on failure.
+        """
+
+        if len(digest) != 32:
+            raise VerificationError("Expected digest with length 32 bytes; got %d bytes" % len(digest))
+        elif digest != block_header.hashMerkleRoot:
+            raise VerificationError("Digest does not match merkleroot")
+
+        return block_header.nTime
+
+    def __repr__(self):
+        return 'LitecoinBlockHeaderAttestation(%r)' % self.height
+
+    def _serialize_payload(self, ctx):
+        ctx.write_varuint(self.height)
+
+    @classmethod
+    def deserialize(cls, ctx):
+        height = ctx.read_varuint()
+        return LitecoinBlockHeaderAttestation(height)
+

@@ -246,7 +246,7 @@ class Stamper:
 
             # Check all potential pending txs against this block.
             for unconfirmed_tx in self.unconfirmed_txs:
-                block_timestamp = make_timestamp_from_block(unconfirmed_tx.tip_timestamp.msg, block, block_height)
+                block_timestamp = make_timestamp_from_block(unconfirmed_tx.tip_timestamp.msg, block, block_height, chain)
 
                 if block_timestamp is None:
                     continue
