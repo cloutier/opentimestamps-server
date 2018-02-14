@@ -368,7 +368,7 @@ class LitecoinBlockHeaderAttestation(TimeAttestation):
     more gracefully.
     """
 
-    TAG = bytes.fromhex('0688960d73d71901')
+    TAG = bytes.fromhex('06869a0d73d71b45')
 
     def __init__(self, height):
         self.height = height

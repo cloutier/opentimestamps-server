@@ -92,6 +92,8 @@ def make_timestamp_from_block(digest, block, blockheight, chain, *, max_tx_size=
         attestation = BitcoinBlockHeaderAttestation(blockheight)
     elif chain == "litecoin":
         attestation = LitecoinBlockHeaderAttestation(blockheight)
+    elif chain == "litecoinTestnet":
+        attestation = LitecoinBlockHeaderAttestation(blockheight)
     merkleroot_stamp.attestations.add(attestation)
 
     return digest_timestamp
