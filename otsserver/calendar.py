@@ -213,21 +213,23 @@ class Calendar:
 
         self.db = LevelDbCalendar(path + '/db')
 
-        try:
-            uri_path = self.path + '/uri'
+        uri_path = self.path + '/uri'
+        if os.path.exists(uri_path):
             with open(uri_path, 'r') as fd:
                 self.uri = fd.read().strip()
-        except FileNotFoundError as err:
-            logging.error('Calendar URI not yet set; %r does not exist' % uri_path)
-            sys.exit(1)
+        else:
+            # We can use the hostname in the request if this is not defined
+            self.uri = None
 
-        try:
-            hmac_key_path = self.path + '/hmac-key'
+        hmac_key_path = self.path + '/hmac-key'
+        if os.path.exists(hmac_key_path):
             with open(hmac_key_path, 'rb') as fd:
                 self.hmac_key = fd.read()
-        except FileNotFoundError as err:
+        else:
             logging.error('HMAC secret key not set; %r does not exist' % hmac_key_path)
-            sys.exit(1)
+            with open(hmac_key_path, 'wb') as fd:
+                self.hmac_key = fd.write(os.urandom(32))
+            logging.error('HMAC secret key created')
 
     def submit(self, submitted_commitment):
         idx = int(time.time())
