@@ -9,13 +9,14 @@
 # modified, propagated, or distributed except according to the terms contained
 # in the LICENSE file.
 
-import collections
 import logging
 import os
 import queue
 import struct
 import threading
 import time
+import pickle
+from collections import namedtuple, OrderedDict
 
 import bitcoin.rpc
 
@@ -31,11 +32,11 @@ from opentimestamps.timestamp import nonce_timestamp
 
 from otsserver.calendar import Journal
 
-KnownBlock = collections.namedtuple('KnownBlock', ['height', 'hash'])
-TimestampTx = collections.namedtuple('TimestampTx', ['tx', 'tip_timestamp', 'commitment_timestamps'])
-UnconfirmedTimestampTx = collections.namedtuple('TimestampTx', ['tx', 'tip_timestamp', 'n'])
+KnownBlock = namedtuple('KnownBlock', ['height', 'hash'])
+TimestampTx = namedtuple('TimestampTx', ['tx', 'tip_timestamp', 'commitment_timestamps'])
+UnconfirmedTimestampTx = namedtuple('TimestampTx', ['tx', 'tip_timestamp', 'n'])
 
-class OrderedSet(collections.OrderedDict):
+class OrderedSet(OrderedDict):
     def add(self, item):
         self[item] = ()
 
@@ -104,6 +105,46 @@ def _get_tx_fee(tx, proxy):
     value_out = sum(txout.nValue for txout in tx.vout)
     return value_in - value_out
 
+def find_pending(proxy):
+    def sort_filter_unspent(unspent):
+        DUST = 0.001 * COIN
+        return sorted(filter(lambda x: x['amount'] > DUST and x['spendable'], unspent),
+                      key=lambda x: x['amount'])
+
+    unspent = sort_filter_unspent(proxy.listunspent(1))
+
+    if len(unspent):
+        return unspent
+
+    else:
+        logging.info("Couldn't find a confirmed output, trying unconfirmed")
+
+        # Try again with the unconfirmed transactions
+        unconfirmed_unspent = sort_filter_unspent(proxy.listunspent(0, 1))
+
+        confirmed_unspent = []
+        for unspent_txout in unconfirmed_unspent:
+            txid = unspent_txout['outpoint'].hash
+            tx = proxy.getrawtransaction(txid)
+            for txin in tx.vin:
+                try:
+                    confirmed_outpoint = proxy.gettxout(txin.prevout, includemempool=False)
+
+                    # make sure this txout is from a wallet transaction, which
+                    # means we can spend it
+                    proxy.gettransaction(txin.prevout.hash)
+
+                    # All our txs will have a single input, with opt-in RBF set
+                    prevout_tx = proxy.getrawtransaction(txin.prevout.hash)
+                    if len(prevout_tx.vin) != 1 or prevout_tx.vin[0].nSequence != 0xfffffffd:
+                        continue
+                except IndexError:
+                    continue
+
+                confirmed_unspent.append({'outpoint':txin.prevout,
+                                          'amount':confirmed_outpoint['txout'].nValue})
+
+        return sorted(confirmed_unspent, key=lambda x: x['amount'])
 def find_unspent(proxy):
     def sort_filter_unspent(unspent):
         DUST = 0.001 * COIN
@@ -271,6 +312,7 @@ class Stamper:
                 # Since all unconfirmed txs conflict with each other, we can clear the entire lot
                 self.unconfirmed_txs.clear()
 
+                pickle.dump(self.unconfirmed_txs, open("/tmp/transactions.pickle", "wb"))
                 # And finally, we can reset the last time a timestamp
                 # transaction was mined to right now.
                 self.last_timestamp_tx = time.time()
@@ -353,6 +395,7 @@ class Stamper:
                 logging.info("Sent timestamp tx %s; %d total commitments" % (b2lx(sent_tx.GetTxid()), len(commitment_timestamps)))
 
             self.unconfirmed_txs.append(UnconfirmedTimestampTx(sent_tx, tip_timestamp, len(commitment_timestamps)))
+            pickle.dump(self.unconfirmed_txs, open("/tmp/transactions.pickle", "wb"))
 
     def __loop(self):
         logging.info("Starting stamper loop")
@@ -364,6 +407,15 @@ class Stamper:
                 idx = int(known_good_fd.read().strip())
         except FileNotFoundError as exp:
             idx = 0
+
+        if not hasattr(self, "unconfirmed_txs"):
+            try:
+                self.unconfirmed_txs = pickle.load(open("/tmp/transactions.pickle", "rb"))
+                print("Hydrated %s transaction(s)" % len(self.unconfirmed_txs))
+            except (TypeError,FileNotFoundError) as e:
+                print(e)
+                # We cannot find pending transactions so we assume there is none
+                self.unconfirmed_txs = []
 
         while not self.exit_event.is_set():
             # Get all pending commitments
@@ -429,7 +481,8 @@ class Stamper:
         self.max_pending = max_pending
 
         self.known_blocks = KnownBlocks()
-        self.unconfirmed_txs = []
+
+
         self.pending_commitments = OrderedSet()
         self.txs_waiting_for_confirmation = {}
 
