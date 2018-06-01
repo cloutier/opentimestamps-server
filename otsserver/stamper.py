@@ -20,7 +20,7 @@ from bitcoin.core import COIN, b2lx, b2x, CTxIn, CTxOut, CTransaction, str_money
 from bitcoin.core.script import CScript, OP_RETURN
 
 from opentimestamps.bitcoin import cat_sha256d
-from opentimestamps.core.notary import BitcoinBlockHeaderAttestation
+from opentimestamps.core.notary import BitcoinBlockHeaderAttestation, LitecoinBlockHeaderAttestation
 from opentimestamps.core.op import OpPrepend, OpSHA256
 from opentimestamps.core.timestamp import Timestamp, make_merkle_tree
 
@@ -52,7 +52,7 @@ def make_btc_block_merkle_tree(blk_txids):
     return digests[0]
 
 
-def make_timestamp_from_block_tx(confirmed_tx, block, blockheight):
+def make_timestamp_from_block_tx(confirmed_tx, block, blockheight, chain):
 
     commitment_tx = confirmed_tx.tx
     serialized_tx = commitment_tx.serialize(params={'include_witness': False})
@@ -87,7 +87,10 @@ def make_timestamp_from_block_tx(confirmed_tx, block, blockheight):
     merkleroot_stamp = make_btc_block_merkle_tree(block_txid_stamps)
     assert merkleroot_stamp.msg == block.hashMerkleRoot
 
-    attestation = BitcoinBlockHeaderAttestation(blockheight)
+    if chain == "bitcoin":
+        attestation = BitcoinBlockHeaderAttestation(blockheight)
+    elif chain == "litecoin" or chain == "litecoinTestnet":
+        attestation = LitecoinBlockHeaderAttestation(blockheight)
     merkleroot_stamp.attestations.add(attestation)
 
     return digest_timestamp
@@ -327,7 +330,7 @@ class Stamper:
                     continue
 
                 confirmed_tx = unconfirmed_tx  # Success! Found tx
-                block_timestamp = make_timestamp_from_block(unconfirmed_tx.tip_timestamp.msg, block, block_height, chain)
+                block_timestamp = make_timestamp_from_block_tx(confirmed_tx, block, block_height, chain)
 
                 logging.info("Found commitment %s in tx %s"
                              % (b2x(confirmed_tx.tip_timestamp.msg), b2lx(confirmed_tx.tx.GetTxid())))

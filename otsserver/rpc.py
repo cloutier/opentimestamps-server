@@ -22,12 +22,15 @@ from functools import reduce
 import bitcoin.core
 from bitcoin.core import b2lx, b2x
 
+from otsserver.backup import Backup
 import otsserver
 from opentimestamps.core.serialize import StreamSerializationContext
 
 import otsserver.dotconf
 
+from otsserver.calendar import Journal
 renderer = pystache.Renderer()
+
 class RPCRequestHandler(http.server.BaseHTTPRequestHandler):
     MAX_DIGEST_LENGTH = 64
     """Largest digest that can be POSTed for timestamping"""
@@ -67,6 +70,24 @@ class RPCRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(204)
             self.send_header('Cache-Control', 'public, max-age=10')
             self.end_headers()
+
+    def get_backup(self):
+        chunk = self.path[len('/experimental/backup/'):]
+        try:
+            chunk = int(chunk)
+            result = self.backup[chunk]
+        except:
+            self.send_response(404)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            return
+
+        assert result is not None
+        self.send_response(200)
+        self.send_header('Content-type', 'application/octet-stream')
+        self.send_header('Cache-Control', 'public, max-age=31536000')
+        self.end_headers()
+        self.wfile.write(result)
 
     def get_timestamp(self):
         commitment = self.path[len('/timestamp/'):]
@@ -159,14 +180,18 @@ class RPCRequestHandler(http.server.BaseHTTPRequestHandler):
             # need to investigate further, but this seems to work.
             str_wallet_balance = str(proxy._call("getbalance"))
 
-            transactions = proxy._call("listtransactions", "", 50)
+            transactions = proxy._call("listtransactions", "", 1000)
             # We want only the confirmed txs containing an OP_RETURN, from most to least recent
             transactions = list(filter(lambda x: x["confirmations"] > 0 and x["amount"] == 0, transactions))
             a_week_ago = (datetime.date.today() - datetime.timedelta(days=7)).timetuple()
             a_week_ago_posix = time.mktime(a_week_ago)
             transactions_in_last_week = list(filter(lambda x: x["time"] > a_week_ago_posix, transactions))
             fees_in_last_week = reduce(lambda a,b: a-b["fee"], transactions_in_last_week, 0)
-            time_between_transactions = round(168 / len(transactions_in_last_week)) # in hours based on 168 hours in a week
+            try:
+                time_between_transactions = str(round(168 / len(transactions_in_last_week), 2)) # in hours based on 168 hours in a week
+                time_between_transactions += " hours"
+            except ZeroDivisionError:
+                time_between_transactions = "N/A"
             transactions.sort(key=lambda x: x["confirmations"])
             homepage_template = """<html>
 <head>
@@ -175,23 +200,22 @@ class RPCRequestHandler(http.server.BaseHTTPRequestHandler):
 <body>
 <p>This is an <a href="https://opentimestamps.org">OpenTimestamps</a> <a href="https://github.com/opentimestamps/opentimestamps-server">Calendar Server</a> (v{{ version }})</p>
 <p>
-</br>
 Pending commitments: {{ pending_commitments }}</br>
 Transactions waiting for confirmation: {{ txs_waiting_for_confirmation }}</br>
 Most recent timestamp tx: {{ most_recent_tx }} ({{ prior_versions }} prior versions)</br>
 Most recent merkle tree tip: {{ tip }}</br>
 Best-block: {{ best_block }}, height {{ block_height }}</br>
-Current chain: {{ curent_chain }}</br>
+Current chain: {{ current_chain }}</br>
 </br>
-Wallet balance: {{ balance }} BTC</br>
+Wallet balance: {{ balance }} {{ ticker }}</br>
 </p>
 <p>
 You can donate to the wallet by sending funds to: {{ address }}</br>
 This address changes after every donation.
 </p>
 <p>
-Average time between transactions in the last week: {{ time_between_transactions }} hour(s)</br>
-Fees used in the last week: {{ fees_in_last_week }} BTC</br>
+Average time between transactions in the last week: {{ time_between_transactions }} </br>
+Fees used in the last week: {{ fees_in_last_week }} {{ ticker }}</br>
 Latest transactions: </br>
 {{#transactions}}
     {{txid}} </br>
@@ -214,6 +238,7 @@ Latest transactions: </br>
               'time_between_transactions': time_between_transactions,
               'fees_in_last_week': fees_in_last_week,
        	      'current_chain': self.calendar.stamper.chain,
+              'ticker': otsserver.dotconf.getTickerForChain(self.calendar.stamper.chain),
             }
             welcome_page = renderer.render(homepage_template, stats)
             self.wfile.write(str.encode(welcome_page))
@@ -223,7 +248,8 @@ Latest transactions: </br>
             self.get_timestamp()
         elif self.path == '/tip':
             self.get_tip()
-
+        elif self.path.startswith('/experimental/backup/'):
+            self.get_backup()
         else:
             self.send_response(404)
             self.send_header('Content-type', 'text/plain')
@@ -241,6 +267,9 @@ class StampServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
             pass
         rpc_request_handler.aggregator = aggregator
         rpc_request_handler.calendar = calendar
+
+        journal = Journal(calendar.path + '/journal')
+        rpc_request_handler.backup = Backup(journal, calendar, calendar.path + '/backup_cache')
 
         super().__init__(server_address, rpc_request_handler)
 
